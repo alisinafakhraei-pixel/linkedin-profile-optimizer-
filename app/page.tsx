@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
-import { Loader2, Sparkles, AlertCircle, CheckCircle2, Moon, Sun, UploadCloud, FileText } from "lucide-react"
+import { Loader2, Sparkles, AlertCircle, CheckCircle2, Moon, Sun, UploadCloud, FileText, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import packageJson from "../package.json"
 
@@ -52,6 +53,21 @@ function ErrorAlert({ error }: { error: AppError }) {
         )}
       </AlertDescription>
     </Alert>
+  )
+}
+
+function ComingSoonSection({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative">
+      <div className="pointer-events-none select-none opacity-60 blur-[1.5px] grayscale-[30%]">
+        {children}
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <Badge variant="secondary" className="shadow-sm">
+          به‌زودی
+        </Badge>
+      </div>
+    </div>
   )
 }
 
@@ -258,57 +274,6 @@ export default function Page() {
 
       {step === "input" && (
         <div className="w-full space-y-6">
-          <form onSubmit={handleUrlSubmit} className="w-full space-y-3">
-            <Input
-              type="url"
-              dir="ltr"
-              placeholder="https://www.linkedin.com/in/your-name"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="h-12 text-center text-sm"
-              required
-            />
-            <Button type="submit" className="h-12 w-full text-base">
-              تحلیل پروفایل
-            </Button>
-          </form>
-
-          <div className="flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">یا</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
-          <form onSubmit={handleFileSubmit} className="w-full space-y-3">
-            <label
-              htmlFor="profile-file"
-              className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-8 text-center transition-colors hover:border-foreground/30"
-            >
-              <UploadCloud className="h-6 w-6 text-muted-foreground" />
-              <span className="text-sm font-medium">
-                {file ? file.name : "بارگذاری فایل پروفایل"}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                فایل رزومه یا خروجی پروفایل خود را اینجا بارگذاری کنید
-              </span>
-              <input
-                id="profile-file"
-                type="file"
-                className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            <Button type="submit" variant="outline" className="h-12 w-full text-base" disabled={!file}>
-              تحلیل فایل
-            </Button>
-          </form>
-
-          <div className="flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">یا</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
           <form onSubmit={handleDirectTextSubmit} className="w-full space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <FileText className="h-4 w-4 text-muted-foreground" />
@@ -320,12 +285,57 @@ export default function Page() {
               onChange={(e) => setDirectText(e.target.value)}
               className="min-h-40 text-sm"
             />
-            <Button type="submit" variant="outline" className="h-12 w-full text-base" disabled={!directText.trim()}>
+            <Button type="submit" className="h-12 w-full text-base" disabled={!directText.trim()}>
               تحلیل متن
             </Button>
+            {error && <ErrorAlert error={error} />}
           </form>
 
-          {error && <ErrorAlert error={error} />}
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">یا</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <ComingSoonSection>
+            <form className="w-full space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Link2 className="h-4 w-4 text-muted-foreground" />
+                لینک پروفایل لینکدین
+              </div>
+              <Input
+                type="url"
+                dir="ltr"
+                placeholder="https://www.linkedin.com/in/your-name"
+                className="h-12 text-center text-sm"
+                disabled
+              />
+              <Button type="button" className="h-12 w-full text-base" disabled>
+                تحلیل پروفایل
+              </Button>
+            </form>
+          </ComingSoonSection>
+
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">یا</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <ComingSoonSection>
+            <form className="w-full space-y-3">
+              <label className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-8 text-center">
+                <UploadCloud className="h-6 w-6 text-muted-foreground" />
+                <span className="text-sm font-medium">بارگذاری فایل پروفایل</span>
+                <span className="text-xs text-muted-foreground">
+                  فایل رزومه یا خروجی پروفایل خود را اینجا بارگذاری کنید
+                </span>
+              </label>
+              <Button type="button" variant="outline" className="h-12 w-full text-base" disabled>
+                تحلیل فایل
+              </Button>
+            </form>
+          </ComingSoonSection>
         </div>
       )}
 
@@ -381,9 +391,29 @@ export default function Page() {
         </div>
       )}
 
-      <p dir="ltr" className="mt-16 text-xs text-muted-foreground">
-        v{packageJson.version}
-      </p>
+      <div className="mt-16 flex flex-col items-center gap-1 text-xs text-muted-foreground">
+        <p>
+          ساخته‌شده با 🤍 توسط{" "}
+          <a
+            href="https://www.linkedin.com/in/alisina-fakhraei/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            علی‌سینا
+          </a>{" "}
+          و{" "}
+          <a
+            href="https://www.linkedin.com/in/mahtab-kasaei/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            مهتاب
+          </a>
+        </p>
+        <p dir="ltr">v{packageJson.version}</p>
+      </div>
     </div>
   )
 }

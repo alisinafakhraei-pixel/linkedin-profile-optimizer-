@@ -76,7 +76,17 @@ export default function Page() {
     setMounted(true)
   }, [])
 
-  async function runAnalysis(profileText: string) {
+  const ERROR_MESSAGES: Record<string, string> = {
+    rate_limited: "امروز به سقف ۵ تحلیل رایگان رسیدید. فردا دوباره امتحان کنید.",
+    insufficient_content: "متن پروفایل بسیار کوتاه است. لطفاً محتوای بیشتری وارد کنید.",
+    empty_response: "هوش مصنوعی پاسخی تولید نکرد. لطفاً دوباره تلاش کنید.",
+    invalid_json_response: "پردازش پاسخ هوش مصنوعی با مشکل مواجه شد. لطفاً دوباره تلاش کنید.",
+    invalid_api_key: "کلید سرویس هوش مصنوعی نامعتبر است. لطفاً با پشتیبانی تماس بگیرید.",
+    provider_rate_limited: "سرویس هوش مصنوعی موقتاً شلوغ است. چند لحظه دیگر دوباره تلاش کنید.",
+    analysis_failed: "مشکلی در تحلیل پروفایل پیش آمد. لطفاً دوباره تلاش کنید.",
+  }
+
+  async function runAnalysis(profileText: string, returnStep: Step = "input") {
     setStep("loading")
     setError(null)
     try {
@@ -87,22 +97,19 @@ export default function Page() {
       })
       const data = await res.json()
 
-      if (res.status === 429) {
-        setError("امروز به سقف ۵ تحلیل رایگان رسیدید. فردا دوباره امتحان کنید.")
-        setStep("input")
-        return
-      }
       if (!res.ok || data.error) {
-        setError("مشکلی در تحلیل پروفایل پیش آمد. لطفاً دوباره تلاش کنید.")
-        setStep(manualText ? "manual" : "input")
+        console.error("[analyze] request failed", { status: res.status, body: data })
+        setError(ERROR_MESSAGES[data.error] ?? ERROR_MESSAGES.analysis_failed)
+        setStep(returnStep)
         return
       }
 
       setResult(data.result)
       setStep("result")
-    } catch {
+    } catch (err) {
+      console.error("[analyze] network error", err)
       setError("ارتباط با سرور برقرار نشد. اتصال اینترنت خود را بررسی کنید.")
-      setStep(manualText ? "manual" : "input")
+      setStep(returnStep)
     }
   }
 
@@ -141,7 +148,7 @@ export default function Page() {
   async function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!manualText.trim()) return
-    await runAnalysis(manualText.trim())
+    await runAnalysis(manualText.trim(), "manual")
   }
 
   async function handleDirectTextSubmit(e: React.FormEvent) {

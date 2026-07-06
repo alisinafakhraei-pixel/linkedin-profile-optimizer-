@@ -4,6 +4,10 @@ const WINDOW_MS = 24 * 60 * 60 * 1000
 const hits = new Map<string, number[]>()
 
 export function checkRateLimit(key: string): { allowed: boolean; remaining: number } {
+  if (process.env.NODE_ENV !== "production") {
+    return { allowed: true, remaining: DAILY_LIMIT }
+  }
+
   const now = Date.now()
   const timestamps = (hits.get(key) ?? []).filter((t) => now - t < WINDOW_MS)
 

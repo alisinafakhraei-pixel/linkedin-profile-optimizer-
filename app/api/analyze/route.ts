@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI, Type } from "@google/genai"
 import { checkRateLimit } from "@/lib/rate-limit"
 
+if (!process.env.GOOGLE_AI_API_KEY) {
+  console.error("[analyze] GOOGLE_AI_API_KEY is not set. Requests will fail.")
+}
+
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY })
 
 const RESPONSE_SCHEMA = {
@@ -49,23 +53,32 @@ const SYSTEM_INSTRUCTION = `تو یک متخصص برندسازی شخصی و ب
 امتیاز کلی (overallScore) میانگین وزنی منطقی از این دو بخش باشد.`
 
 export async function POST(req: NextRequest) {
+  const requestId = Math.random().toString(36).slice(2, 8)
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown"
+  const log = (...args: unknown[]) => console.log(`[analyze:${requestId}] ip=${ip}`, ...args)
+  const logError = (...args: unknown[]) => console.error(`[analyze:${requestId}] ip=${ip}`, ...args)
+
   const { allowed, remaining } = checkRateLimit(ip)
 
   if (!allowed) {
-    return NextResponse.json(
-      { error: "rate_limited" },
-      { status: 429 }
-    )
+    log("blocked: daily rate limit reached")
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 })
   }
 
-  const body = await req.json().catch(() => null)
+  const body = await req.json().catch((err) => {
+    logError("failed to parse request body as JSON:", err)
+    return null
+  })
   const profileText = typeof body?.profileText === "string" ? body.profileText.trim() : ""
 
   if (!profileText || profileText.length < 20) {
+    log("rejected: profileText missing or too short", { length: profileText.length })
     return NextResponse.json({ error: "insufficient_content" }, { status: 400 })
   }
 
+  log("starting analysis", { textLength: profileText.length, remaining })
+
+  let rawText: string | undefined
   try {
     const result = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -82,15 +95,41 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    const text = result.text
-    if (!text) {
+    rawText = result.text
+
+    if (!rawText) {
+      logError("empty response from Gemini", {
+        finishReason: result.candidates?.[0]?.finishReason,
+        promptFeedback: result.promptFeedback,
+      })
       return NextResponse.json({ error: "empty_response" }, { status: 502 })
     }
 
-    const parsed = JSON.parse(text)
+    let parsed
+    try {
+      parsed = JSON.parse(rawText)
+    } catch (parseErr) {
+      logError("failed to parse Gemini output as JSON:", parseErr, {
+        rawTextPreview: rawText.slice(0, 500),
+      })
+      return NextResponse.json({ error: "invalid_json_response" }, { status: 502 })
+    }
+
+    log("analysis succeeded")
     return NextResponse.json({ result: parsed, remaining })
   } catch (err) {
-    console.error("Gemini analyze error:", err)
+    const status = (err as { status?: number })?.status
+    logError("Gemini API call failed:", err instanceof Error ? err.message : err, {
+      status,
+    })
+
+    if (status === 401 || status === 403) {
+      return NextResponse.json({ error: "invalid_api_key" }, { status: 502 })
+    }
+    if (status === 429) {
+      return NextResponse.json({ error: "provider_rate_limited" }, { status: 502 })
+    }
+
     return NextResponse.json({ error: "analysis_failed" }, { status: 502 })
   }
 }

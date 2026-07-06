@@ -17,15 +17,25 @@ function extractTitle(html: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => null)
+  const requestId = Math.random().toString(36).slice(2, 8)
+  const log = (...args: unknown[]) => console.log(`[scrape:${requestId}]`, ...args)
+  const logError = (...args: unknown[]) => console.error(`[scrape:${requestId}]`, ...args)
+
+  const body = await req.json().catch((err) => {
+    logError("failed to parse request body as JSON:", err)
+    return null
+  })
   const url = typeof body?.url === "string" ? body.url.trim() : ""
 
   if (!LINKEDIN_URL_PATTERN.test(url)) {
+    log("rejected: invalid url", { url })
     return NextResponse.json(
       { success: false, reason: "invalid_url" },
       { status: 400 }
     )
   }
+
+  log("fetching", { url })
 
   try {
     const response = await fetch(url, {
@@ -39,11 +49,13 @@ export async function POST(req: NextRequest) {
     })
 
     if (!response.ok) {
+      log("blocked: non-ok response", { status: response.status })
       return NextResponse.json({ success: false, reason: "blocked" })
     }
 
     const finalUrl = response.url
     if (/\/authwall|\/login|\/checkpoint/i.test(finalUrl)) {
+      log("blocked: redirected to authwall", { finalUrl })
       return NextResponse.json({ success: false, reason: "authwall" })
     }
 
@@ -52,9 +64,11 @@ export async function POST(req: NextRequest) {
     const title = extractTitle(html)
 
     if (!description || description.length < 30) {
+      log("no usable data in page", { hasTitle: !!title, descriptionLength: description?.length ?? 0 })
       return NextResponse.json({ success: false, reason: "no_data" })
     }
 
+    log("scrape succeeded", { descriptionLength: description.length })
     return NextResponse.json({
       success: true,
       data: {
@@ -62,7 +76,8 @@ export async function POST(req: NextRequest) {
         summary: description,
       },
     })
-  } catch {
+  } catch (err) {
+    logError("fetch failed:", err instanceof Error ? err.message : err)
     return NextResponse.json({ success: false, reason: "fetch_error" })
   }
 }

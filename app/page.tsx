@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
 import { Loader2, Sparkles, AlertCircle, CheckCircle2, Moon, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -63,11 +63,16 @@ function ScoreSection({ title, data }: { title: string; data: SectionResult }) {
 
 export default function Page() {
   const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
   const [step, setStep] = useState<Step>("input")
   const [url, setUrl] = useState("")
   const [manualText, setManualText] = useState("")
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   async function runAnalysis(profileText: string) {
     setStep("loading")
@@ -154,7 +159,11 @@ export default function Page() {
         onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
         aria-label="تغییر حالت روشن/تاریک"
       >
-        {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        {mounted && resolvedTheme === "dark" ? (
+          <Sun className="h-4 w-4" />
+        ) : (
+          <Moon className="h-4 w-4" />
+        )}
       </Button>
 
       <div className="mb-10 flex flex-col items-center gap-3 text-center">

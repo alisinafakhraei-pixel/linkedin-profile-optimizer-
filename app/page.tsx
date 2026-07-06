@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
+import packageJson from "../package.json"
 
 type SectionResult = {
   score: number
@@ -24,10 +25,34 @@ type AnalysisResult = {
 
 type Step = "input" | "loading" | "manual" | "result"
 
+type AppError = {
+  message: string
+  detail?: string
+  requestId?: string
+}
+
 function scoreColor(score: number) {
   if (score >= 75) return "text-emerald-600"
   if (score >= 50) return "text-amber-600"
   return "text-red-600"
+}
+
+function ErrorAlert({ error }: { error: AppError }) {
+  return (
+    <Alert variant="destructive">
+      <AlertCircle className="h-4 w-4" />
+      <AlertDescription className="space-y-1">
+        <p>{error.message}</p>
+        {(error.detail || error.requestId) && (
+          <p dir="ltr" className="text-left text-xs text-destructive/70">
+            {error.detail && <span>{error.detail}</span>}
+            {error.detail && error.requestId && <span> · </span>}
+            {error.requestId && <span>id: {error.requestId}</span>}
+          </p>
+        )}
+      </AlertDescription>
+    </Alert>
+  )
 }
 
 function ScoreSection({ title, data }: { title: string; data: SectionResult }) {
@@ -70,18 +95,17 @@ export default function Page() {
   const [directText, setDirectText] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [result, setResult] = useState<AnalysisResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<AppError | null>(null)
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
   const ERROR_MESSAGES: Record<string, string> = {
-    rate_limited: "امروز به سقف ۵ تحلیل رایگان رسیدید. فردا دوباره امتحان کنید.",
     insufficient_content: "متن پروفایل بسیار کوتاه است. لطفاً محتوای بیشتری وارد کنید.",
     empty_response: "هوش مصنوعی پاسخی تولید نکرد. لطفاً دوباره تلاش کنید.",
     invalid_json_response: "پردازش پاسخ هوش مصنوعی با مشکل مواجه شد. لطفاً دوباره تلاش کنید.",
-    invalid_api_key: "کلید سرویس هوش مصنوعی نامعتبر است. لطفاً با پشتیبانی تماس بگیرید.",
+    invalid_api_key: "کلید سرویس هوش مصنوعی نامعتبر یا تنظیم‌نشده است. لطفاً با پشتیبانی تماس بگیرید.",
     provider_rate_limited: "سرویس هوش مصنوعی موقتاً شلوغ است. چند لحظه دیگر دوباره تلاش کنید.",
     analysis_failed: "مشکلی در تحلیل پروفایل پیش آمد. لطفاً دوباره تلاش کنید.",
   }
@@ -99,7 +123,11 @@ export default function Page() {
 
       if (!res.ok || data.error) {
         console.error("[analyze] request failed", { status: res.status, body: data })
-        setError(ERROR_MESSAGES[data.error] ?? ERROR_MESSAGES.analysis_failed)
+        setError({
+          message: ERROR_MESSAGES[data.error] ?? ERROR_MESSAGES.analysis_failed,
+          detail: data.detail,
+          requestId: data.requestId,
+        })
         setStep(returnStep)
         return
       }
@@ -108,7 +136,10 @@ export default function Page() {
       setStep("result")
     } catch (err) {
       console.error("[analyze] network error", err)
-      setError("ارتباط با سرور برقرار نشد. اتصال اینترنت خود را بررسی کنید.")
+      setError({
+        message: "ارتباط با سرور برقرار نشد. اتصال اینترنت خود را بررسی کنید.",
+        detail: err instanceof Error ? err.message : String(err),
+      })
       setStep(returnStep)
     }
   }
@@ -129,7 +160,7 @@ export default function Page() {
       const data = await res.json()
 
       if (!res.ok || data.reason === "invalid_url") {
-        setError("لینک وارد شده معتبر نیست. لطفاً یک لینک پروفایل لینکدین صحیح وارد کنید.")
+        setError({ message: "لینک وارد شده معتبر نیست. لطفاً یک لینک پروفایل لینکدین صحیح وارد کنید." })
         setStep("input")
         return
       }
@@ -138,9 +169,11 @@ export default function Page() {
         const profileText = `${data.data.title}\n\n${data.data.summary}`
         await runAnalysis(profileText)
       } else {
+        console.warn("[scrape] falling back to manual paste", { reason: data.reason })
         setStep("manual")
       }
-    } catch {
+    } catch (err) {
+      console.error("[scrape] network error", err)
       setStep("manual")
     }
   }
@@ -163,21 +196,26 @@ export default function Page() {
 
     const isPlainText = file.type.startsWith("text/") || /\.(txt|md)$/i.test(file.name)
     if (!isPlainText) {
-      setError(
-        "فرمت این فایل هنوز پشتیبانی نمی‌شود. لطفاً محتوای پروفایل را از فایل کپی کرده و در بخش «جای‌گذاری متن» وارد کنید."
-      )
+      setError({
+        message:
+          "فرمت این فایل هنوز پشتیبانی نمی‌شود. لطفاً محتوای پروفایل را از فایل کپی کرده و در بخش «جای‌گذاری متن» وارد کنید.",
+      })
       return
     }
 
     try {
       const text = await file.text()
       if (!text.trim()) {
-        setError("فایل انتخاب‌شده خالی است.")
+        setError({ message: "فایل انتخاب‌شده خالی است." })
         return
       }
       await runAnalysis(text.trim())
-    } catch {
-      setError("خواندن فایل با مشکل مواجه شد. لطفاً دوباره تلاش کنید.")
+    } catch (err) {
+      console.error("[file] read error", err)
+      setError({
+        message: "خواندن فایل با مشکل مواجه شد. لطفاً دوباره تلاش کنید.",
+        detail: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
@@ -287,12 +325,7 @@ export default function Page() {
             </Button>
           </form>
 
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+          {error && <ErrorAlert error={error} />}
         </div>
       )}
 
@@ -323,12 +356,7 @@ export default function Page() {
           <Button type="submit" className="h-12 w-full text-base">
             تحلیل پروفایل
           </Button>
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+          {error && <ErrorAlert error={error} />}
         </form>
       )}
 
@@ -352,6 +380,10 @@ export default function Page() {
           </Button>
         </div>
       )}
+
+      <p dir="ltr" className="mt-16 text-xs text-muted-foreground">
+        v{packageJson.version}
+      </p>
     </div>
   )
 }

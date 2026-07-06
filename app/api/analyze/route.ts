@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenAI, Type } from "@google/genai"
-import { checkRateLimit } from "@/lib/rate-limit"
 
 if (!process.env.GOOGLE_AI_API_KEY) {
   console.error("[analyze] GOOGLE_AI_API_KEY is not set. Requests will fail.")
@@ -58,13 +57,6 @@ export async function POST(req: NextRequest) {
   const log = (...args: unknown[]) => console.log(`[analyze:${requestId}] ip=${ip}`, ...args)
   const logError = (...args: unknown[]) => console.error(`[analyze:${requestId}] ip=${ip}`, ...args)
 
-  const { allowed, remaining } = checkRateLimit(ip)
-
-  if (!allowed) {
-    log("blocked: daily rate limit reached")
-    return NextResponse.json({ error: "rate_limited" }, { status: 429 })
-  }
-
   const body = await req.json().catch((err) => {
     logError("failed to parse request body as JSON:", err)
     return null
@@ -73,10 +65,13 @@ export async function POST(req: NextRequest) {
 
   if (!profileText || profileText.length < 20) {
     log("rejected: profileText missing or too short", { length: profileText.length })
-    return NextResponse.json({ error: "insufficient_content" }, { status: 400 })
+    return NextResponse.json(
+      { error: "insufficient_content", requestId },
+      { status: 400 }
+    )
   }
 
-  log("starting analysis", { textLength: profileText.length, remaining })
+  log("starting analysis", { textLength: profileText.length })
 
   let rawText: string | undefined
   try {
@@ -102,7 +97,10 @@ export async function POST(req: NextRequest) {
         finishReason: result.candidates?.[0]?.finishReason,
         promptFeedback: result.promptFeedback,
       })
-      return NextResponse.json({ error: "empty_response" }, { status: 502 })
+      return NextResponse.json(
+        { error: "empty_response", requestId },
+        { status: 502 }
+      )
     }
 
     let parsed
@@ -112,24 +110,40 @@ export async function POST(req: NextRequest) {
       logError("failed to parse Gemini output as JSON:", parseErr, {
         rawTextPreview: rawText.slice(0, 500),
       })
-      return NextResponse.json({ error: "invalid_json_response" }, { status: 502 })
+      return NextResponse.json(
+        { error: "invalid_json_response", requestId },
+        { status: 502 }
+      )
     }
 
     log("analysis succeeded")
-    return NextResponse.json({ result: parsed, remaining })
+    return NextResponse.json({ result: parsed })
   } catch (err) {
     const status = (err as { status?: number })?.status
-    logError("Gemini API call failed:", err instanceof Error ? err.message : err, {
-      status,
-    })
+    const message = err instanceof Error ? err.message : String(err)
+    logError("Gemini API call failed:", message, { status })
 
-    if (status === 401 || status === 403) {
-      return NextResponse.json({ error: "invalid_api_key" }, { status: 502 })
+    const isKeyMissing = /API key should be set|Could not load the default credentials/i.test(
+      message
+    )
+    const isKeyInvalid = /API_KEY_INVALID|API key not valid/i.test(message)
+
+    if (isKeyMissing || isKeyInvalid) {
+      return NextResponse.json(
+        { error: "invalid_api_key", requestId, detail: message.slice(0, 300) },
+        { status: 502 }
+      )
     }
-    if (status === 429) {
-      return NextResponse.json({ error: "provider_rate_limited" }, { status: 502 })
+    if (status === 429 || /RESOURCE_EXHAUSTED/i.test(message)) {
+      return NextResponse.json(
+        { error: "provider_rate_limited", requestId, detail: message.slice(0, 300) },
+        { status: 502 }
+      )
     }
 
-    return NextResponse.json({ error: "analysis_failed" }, { status: 502 })
+    return NextResponse.json(
+      { error: "analysis_failed", requestId, detail: message.slice(0, 300) },
+      { status: 502 }
+    )
   }
 }
